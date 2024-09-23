@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.study.SpringSecurityMybatis.repository.CommentMapper">
+    <insert id="save">
+        insert into comment
+        values(default, #{boardId}, #{parentId}, #{content}, #{writerId}, now())
+    </insert>
+
+    <update id="createTrigger">
+        CREATE TRIGGER before_delete_comment
+        BEFORE DELETE ON comment
+        FOR EACH ROW
+        DELETE FROM comment WHERE parent_id = OLD.id;
+    </update>
+
+    <update id="updateById">
+        update comment
+        set
+            content = #{content}
+        where
+            id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        WITH RECURSIVE comment_tree(id, board_id, parent_id, content, writer_id, create_date) AS (
+            SELECT
+                id,
+                board_id,
+                parent_id,
+                content,
+                writer_id,
+                create_date
+            FROM
+                comment
+            WHERE
+                id = #{id}
+
+            UNION ALL
+
+            SELECT
+                c.id,
+                c.board_id,
+                c.parent_id,
+                c.content,
+                c.writer_id,
+                c.create_date
+            FROM
+                comment c
+                JOIN comment_tree ct ON(c.parent_id = ct.id)
+        )
+
+        delete
+        from
+            comment
+        where
+            id in(select id from comment_tree)
+
+    </delete>
+
+    <select id="findAllByBoardId" resultType="com.study.SpringSecurityMybatis.entity.Comment">
+        WITH RECURSIVE comment_tree(id, board_id, parent_id, content, writer_id, create_date, level, path) AS (
+            SELECT
+                id,
+                board_id,
+                parent_id,
+                content,
+                writer_id,
+                create_date,
+                0 AS level,
+                LPAD(CAST(id AS VARCHAR(255)), 5, 0) AS path
+            FROM
+                comment
+            WHERE
+                parent_id IS NULL
+                and board_id = #{boardId}
+
+            UNION ALL
+
+            SELECT
+                c.id,
+                c.board_id,
+                c.parent_id,
+                c.content,
+                c.writer_id,
+                c.create_date,
+                ct.level + 1,
+                CONCAT(ct.path, ',', LPAD(c.id, 5, 0)) AS path
+            FROM
+                comment c
+                JOIN comment_tree ct ON(c.parent_id = ct.id)
+            where
+                c.board_id = #{boardId}
+        )
+
+        SELECT
+            ct.id,
+            ct.board_id as boardId,
+            ct.parent_id as parentId,
+            ct.content,
+            ct.writer_id as writerId,
+            ct.create_date as createDate,
+            ct.level,
+            u.username,
+            u.img
+        FROM
+            comment_tree ct
+            left outer join user u on(u.id = ct.writer_id)
+        ORDER BY
+            ct.path;
+    </select>
+    <select id="getCommentCountByBoardId" resultType="java.lang.Integer">
+        select
+            count(*)
+        from
+            comment
+        where
+            board_id = #{boardId}
+    </select>
+    <select id="findById" resultType="com.study.SpringSecurityMybatis.entity.Comment">
+        select
+            id,
+            parent_id as parentId,
+            content,
+            writer_id as writerId,
+            create_date as createDate
+        from
+            comment
+        where
+            id = #{id}
+    </select>
+
+    <select id="findByParentId" resultType="com.study.SpringSecurityMybatis.entity.Comment">
+        select
+            id,
+            parent_id as parentId,
+            content,
+            writer_id as writerId,
+            create_date as createDate
+        from
+            comment
+        where
+            parent_id = #{parentId}
+    </select>
+</mapper>
